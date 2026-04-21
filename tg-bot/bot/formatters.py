@@ -19,10 +19,6 @@ DISCLAIMER = (
 )
 
 
-def _fmt_confidence(c: float) -> str:
-    return f"{c * 100:.0f}%"
-
-
 def _shorten(s: str, n: int) -> str:
     s = s.strip()
     return s if len(s) <= n else s[: n - 1].rstrip() + "…"
@@ -46,7 +42,7 @@ def format_analysis(resp: DetectResponse, source_hint: str | None = None) -> str
             f"The message didn't contain any usable text."
         )
 
-    header = f"{badge} — confidence {_fmt_confidence(resp.confidence)}"
+    header = f"{badge}"
 
     if resp.verdict == Verdict.NO_MATCH:
         body = "No recurring propaganda narrative matched this message."
@@ -80,7 +76,7 @@ def format_details(resp: DetectResponse) -> str:
         return format_analysis(resp)
 
     parts: list[str] = []
-    parts.append(f"{VERDICT_BADGE[resp.verdict]} — confidence {_fmt_confidence(resp.confidence)}")
+    parts.append(f"{VERDICT_BADGE[resp.verdict]}")
     if resp.narrative_label:
         parts.append(f"\n<b>Narrative:</b> {escape(resp.narrative_label)}")
     if resp.narrative_id and not resp.narrative_id.startswith("classifier_"):

@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 QCRI_MODEL = "QCRI/PropagandaTechniquesAnalysis-en-BERT"
 FALLBACK_MODEL = os.getenv("HF_FALLBACK_MODEL", "cross-encoder/nli-deberta-v3-small")
-CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.35"))
+CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", "0.10"))
 
 # Technique → cluster id mapping (aligns with SemEval-2020 propaganda labels)
 _TECHNIQUE_TO_CLUSTER: dict[str, str] = {
