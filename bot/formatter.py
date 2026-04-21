@@ -98,6 +98,97 @@ def format_analyze_result(text: str, is_propaganda: bool, confidence: float, lab
     )
 
 
+def format_similar_articles(matches: list) -> str:
+    """
+    Render top similar disinfo articles.
+    Expected match fields: score, engine, article.title, article.report_url, article.date_of_publication
+    """
+    if not matches:
+        return (
+            "🧭 <b>Similar known disinformation:</b>\n"
+            "No close match found in the current article base."
+        )
+
+    engine = matches[0].engine
+    lines = [
+        "🧭 <b>Similar known disinformation:</b>",
+        f"<i>Matching engine: {engine}</i>",
+        "━━━━━━━━━━━━━━━━━━━━",
+    ]
+    for idx, match in enumerate(matches, 1):
+        article = match.article
+        title = _trim(article.title or "Untitled case", 120)
+        date = article.date_of_publication or "unknown date"
+        verification_line = ""
+        if match.llm_label is not None:
+            label_map = {
+                "supports_claim": "supports claim",
+                "refutes_claim": "refutes claim",
+                "different_event_or_neutral": "different event / neutral",
+                "uncertain": "uncertain",
+            }
+            verdict = label_map.get(match.llm_label, match.llm_label)
+            conf = match.llm_confidence if match.llm_confidence is not None else 0.0
+            verification_line = f"\n🧠 LLM: <b>{verdict}</b> ({conf:.0%})\n"
+        lines.append(
+            f"<b>{idx}.</b> {title}\n"
+            f"📅 {date}  ·  similarity <b>{match.score:.0%}</b>\n"
+            f"{verification_line}"
+            f"🔗 {article.report_url}"
+        )
+    return "\n".join(lines)
+
+
+def format_pipeline_decision(
+    *,
+    matches: list,
+    classifier_prediction,
+    fragment_review,
+) -> str:
+    """
+    Final user-facing natural-language decision message.
+    """
+    if matches:
+        top = matches[0]
+        article = top.article
+        response = _trim(article.response or "No response text available.", 1200)
+        return (
+            "🚨 <b>Decision: Propaganda detected.</b>\n"
+            "This message matches a known disinformation case in our database.\n\n"
+            f"🧾 <b>Matched case:</b> {_trim(article.title, 180)}\n"
+            f"🔗 {article.report_url}\n"
+            f"📊 Match confidence: <b>{top.score:.0%}</b>\n\n"
+            f"📚 <b>Response from database:</b>\n{response}"
+        )
+
+    if classifier_prediction is None:
+        return (
+            "⚠️ <b>Decision unavailable.</b>\n"
+            "No verified database match was found, and classifier fallback could not run."
+        )
+
+    if classifier_prediction.is_propaganda:
+        lines = [
+            "🚨 <b>Decision: Propaganda likely detected.</b>",
+            "No verified database match was found, so classifier fallback was used.",
+            f"📊 Classifier confidence: <b>{classifier_prediction.confidence:.0%}</b>",
+            f"🏷 Narrative: <b>{_trim(classifier_prediction.narrative_label, 140)}</b>",
+        ]
+        if fragment_review is not None and fragment_review.fragments:
+            lines.append("\n🧠 <b>Why this looks manipulative:</b>")
+            for item in fragment_review.fragments[:3]:
+                lines.append(
+                    f"• <b>{item.technique}</b>: <i>{_trim(item.fragment, 180)}</i>\n"
+                    f"  {_trim(item.explanation, 260)}"
+                )
+        return "\n".join(lines)
+
+    return (
+        "✅ <b>Decision: No propaganda detected.</b>\n"
+        "No verified database match was found, and the classifier marked the text as non-propaganda."
+    )
+
+
 # ── /cluster ──────────────────────────────────────────────────────────────────
 
 def format_clusters(clusters: dict[str, list]) -> str:

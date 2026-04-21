@@ -16,13 +16,15 @@ import logging
 
 from telegram import Update
 from telegram.ext import ContextTypes
-from telegram.constants import ParseMode
 
 from services.classifier import classify
+from services.disinfo_pipeline import analyze_message_pipeline
 from storage import db
 from bot.formatter import (
     format_flag_alert,
     format_analyze_result,
+    format_pipeline_decision,
+    format_similar_articles,
     format_report,
     format_clusters,
     format_watch_on,
@@ -92,7 +94,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if args and not args[0].isdigit():
         text = " ".join(args)
         await update.message.reply_html("🔍 Analysing…")
-        result = await classify(text)
+        pipeline = await analyze_message_pipeline(text, top_k=3, verify_with_llm=True)
 
         # Save to DB regardless of result
         msg_id = db.save_message(
@@ -101,11 +103,41 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             username=update.effective_user.username if update.effective_user else None,
             text=text,
         )
+
+        if pipeline.matches:
+            top_match = pipeline.matches[0]
+            db.save_flagged(
+                msg_id,
+                chat_id,
+                top_match.article.title,
+                top_match.score,
+                None,
+            )
+            await update.message.reply_html(
+                format_pipeline_decision(
+                    matches=pipeline.matches,
+                    classifier_prediction=None,
+                    fragment_review=None,
+                )
+            )
+            return
+
+        result = pipeline.classifier_prediction
+        if result is None:
+            await update.message.reply_html(
+                "⚠️ Could not run classifier fallback and no verified DB match was found."
+            )
+            return
+
         if result.is_propaganda:
             db.save_flagged(msg_id, chat_id, result.narrative_label, result.confidence, result.cluster_id)
 
         await update.message.reply_html(
-            format_analyze_result(text, result.is_propaganda, result.confidence, result.narrative_label, result.cluster_id),
+            format_pipeline_decision(
+                matches=[],
+                classifier_prediction=result,
+                fragment_review=pipeline.fragment_review,
+            )
         )
         return
 
@@ -147,8 +179,6 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"Use /report to see all receipts."
     )
     await update.message.reply_html(summary)
-
-
 # ── /report ───────────────────────────────────────────────────────────────────
 
 async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
