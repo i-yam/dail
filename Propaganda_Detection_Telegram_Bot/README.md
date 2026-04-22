@@ -106,6 +106,94 @@ If the API URL is not set or unreachable, the bot automatically falls back to a 
 
 ---
 
+## Semantic matching with known disinformation articles
+
+The bot now includes a backend matcher in `services/disinfo_matcher.py` that compares incoming text against the EUvsDisinfo article base in `data/processed/euvsdisinfo_reports.csv`.
+
+- Uses sentence embeddings (`all-MiniLM-L6-v2`) when available.
+- Falls back to a lexical TF-IDF-like matcher if embeddings cannot be loaded.
+- Allows switching source CSV via `DISINFO_ARTICLES_CSV` (file must include `title`, `summary`, `response`, `report_url` columns).
+- Exposes a clean service API for Telegram integration:
+
+```python
+from services.disinfo_matcher import find_similar_disinfo_articles
+
+matches = find_similar_disinfo_articles(
+    message_text="Your incoming Telegram message",
+    top_k=3,
+    min_score=0.18,
+)
+```
+
+Each match returns article metadata (`title`, `report_url`, `date_of_publication`) plus a similarity score, so bot developers can show "possible source narratives" without relying on exact text overlap.
+
+Matching uses a disinformation-oriented score:
+- compare input to the article's disinfo claim (`summary`/`title`) and debunk (`response`) separately
+- keep candidates where claim similarity is stronger than debunk similarity
+- down-weight broad neutral texts that do not contain disinfo-style framing cues
+
+Pipeline behavior:
+- if verified DB matches are found, return those matches
+- if no verified DB matches are found, run classifier fallback (local model in `classifier/classifier.py` when available)
+
+### Optional LLM verification stage
+
+For better precision on near-duplicate but different events, you can enable a second-stage LLM check:
+
+- Stage 1: retrieval gets top likely disinfo claims from the database
+- Stage 2: LLM verifies relation between message and each retrieved claim
+  - `supports_claim`
+  - `refutes_claim`
+  - `different_event_or_neutral`
+  - `uncertain`
+
+Configure `.env`:
+
+```bash
+DISINFO_LLM_API_URL=https://api.openai.com/v1/chat/completions
+DISINFO_LLM_API_KEY=your_key
+DISINFO_LLM_MODEL=gpt-4o-mini
+DISINFO_LLM_TIMEOUT=20
+```
+
+Call with verification enabled:
+
+```python
+matches = find_similar_disinfo_articles(
+    message_text="...",
+    top_k=3,
+    verify_with_llm=True,
+)
+```
+
+### Test without Telegram bot
+
+Use the standalone CLI tester:
+
+```bash
+python3 scripts/test_disinfo_matcher.py --text "EU uses censorship tools to influence elections"
+```
+
+Or interactive mode:
+
+```bash
+python3 scripts/test_disinfo_matcher.py --interactive
+```
+
+Test against a specific compatible CSV file:
+
+```bash
+python3 scripts/test_disinfo_matcher.py --text "..." --csv-path "/absolute/path/to/compatible_reports.csv"
+```
+
+With LLM verification enabled:
+
+```bash
+python3 scripts/test_disinfo_matcher.py --text "..." --verify-llm
+```
+
+---
+
 ## Adding the bot to a Telegram group
 
 1. Create a group or use an existing one

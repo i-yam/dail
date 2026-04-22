@@ -149,6 +149,9 @@
     position:relative;min-height:360px;
     display:flex;flex-direction:column;justify-content:space-between;
   }
+  a.problem{color:inherit;text-decoration:none}
+  a.problem:visited{color:inherit}
+  .problem.problem-link-card{cursor:pointer}
   .problem:hover{background:var(--orange);color:var(--paper)}
   .problem:hover .p-num,.problem:hover .p-tag{color:var(--paper)}
   .problem-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px}
@@ -333,7 +336,7 @@
       </div>
     </div>
 
-    <div class="problem">
+    <a class="problem problem-link-card" href="https://github.com/PolinaSushko/dail" target="_blank" rel="noopener noreferrer" aria-label="Open Challenge 03 Telegram bot project on GitHub">
       <div>
         <div class="problem-head">
           <div class="p-num">03</div>
@@ -342,7 +345,7 @@
         <h3>A Telegram bot that spots propaganda narratives in the wild.</h3>
         <p>Pluggable into any channel as a slash command. Reads incoming messages, flags recurring propaganda narratives, shows receipts. Bonus: cluster narratives over time and map which channels are singing the same song.</p>
       </div>
-    </div>
+    </a>
 
     <div class="problem">
       <div>
