@@ -1,116 +1,179 @@
-# Propaganda Watchdog Bot  🤖
-
-> **DIAL 2026 Hackathon** · Problem 03 · Team bot layer
-
-A Telegram bot that spots propaganda narratives in real time.
-Pluggable into any channel as a slash command.
+# DisInfoTracer OSS 🔍
+**Trace disinformation back to its first web mention — 100% open-source, zero paid APIs.**
 
 ---
 
-## Project structure
+## Tech Stack (all free/open-source)
 
+| Component | Library / API | Key needed? |
+|---|---|---|
+| LLM reasoning | **Ollama** (llama3/mistral/phi3) — local | ❌ No |
+| LLM fallback | **HuggingFace** public inference | ❌ No |
+| Semantic similarity | **sentence-transformers** `all-MiniLM-L6-v2` | ❌ No |
+| Archive dating | **Wayback Machine CDX API** | ❌ No |
+| Web search | **DuckDuckGo Instant API** | ❌ No |
+| Web archive | **Common Crawl Index API** | ❌ No |
+| News search | **Bing News RSS** (no key) | ❌ No |
+| Scraping | **trafilatura** + BeautifulSoup | ❌ No |
+| Backend | **FastAPI** + uvicorn | ❌ No |
+
+---
+
+## Quick Start
+
+### 1. Install Python dependencies
+```bash
+pip install fastapi uvicorn trafilatura requests aiohttp \
+            beautifulsoup4 sentence-transformers numpy \
+            scikit-learn python-multipart
 ```
-help_pavel/
-├── bot/
-│   ├── main.py          # Entry point — run this
-│   ├── handlers.py      # All /command handlers + message watcher
-│   └── formatter.py     # Telegram HTML message formatting
-├── services/
-│   ├── classifier.py    # HTTP client → teammates' model API (+ mock fallback)
-│   └── __init__.py
-├── storage/
-│   ├── db.py            # SQLite — messages, flagged, watch_chats
-│   └── __init__.py
-├── data/                # Auto-created — holds bot.db
-├── .env.example
-├── requirements.txt
-└── index.html           # Hackathon landing page (from repo)
+
+### 2. (Optional but recommended) Install Ollama for LLM reasoning
+```bash
+# macOS / Linux
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull llama3        # ~4GB, best quality
+# OR lighter alternatives:
+ollama pull mistral       # ~4GB
+ollama pull phi3          # ~2GB, fastest
+ollama serve              # starts on localhost:11434
+```
+
+### 3. Run the backend
+```bash
+python backend.py
+# Server starts at http://localhost:8000
+```
+
+### 4. Open the UI
+```
+http://localhost:8000
 ```
 
 ---
 
-## Quick start
 
-### 1. Get a Bot Token
-Open Telegram → search **@BotFather** → `/newbot` → copy the token.
 
-Then disable privacy mode so the bot can read all messages:
+### Why startup may appear stuck
+
+On first run, `sentence-transformers` can take significant time to initialize/download model assets.
+That can delay FastAPI startup enough to fail short health checks.
+
+### Recommended smoke test on Windows
+
+```powershell
+cd disinfo
+.\.venv\Scripts\python.exe backend.py
 ```
-/setprivacy → @YourBot → Disable
+
+Then wait until Uvicorn prints its running banner before opening:
+
+```
+http://localhost:8000
 ```
 
-### 2. Install dependencies
+If startup remains too slow, you can still validate the code path with:
+
+```powershell
+cd disinfo
+.\.venv\Scripts\python.exe -c "import backend; print('Import successful')"
+```
+
+---
+
+## How It Works
+
+```
+Claim Input
+    │
+    ▼
+[LLM / Rules] Decompose into 3-5 atomic search queries
+    │
+    ├──▶ Wayback Machine CDX API   (archived pages, date-sorted)
+    ├──▶ DuckDuckGo Instant API    (no key, no rate limit)
+    ├──▶ Common Crawl Index API    (petabyte web archive)
+    └──▶ Bing News RSS             (no key needed)
+    │
+    ▼
+Scrape each candidate URL (trafilatura)
+    │
+    ▼
+[sentence-transformers] Compute cosine similarity to claim
+    │
+    ▼
+[Ollama / Rules] Verify + classify each source
+    │
+    ▼
+[Ollama / HuggingFace / Rules] Origin analysis + mutation narrative
+    │
+    ▼
+Timeline + Mutation Chain + Earliest Source UI
+```
+
+---
+
+## LLM Modes
+
+The system auto-detects and uses the best available LLM:
+
+| Mode | When used | Quality |
+|---|---|---|
+| `ollama+embeddings` | Ollama running locally | ★★★ Best |
+| `embeddings+rules` | No Ollama (fallback) | ★★ Good |
+| HuggingFace inference | Secondary fallback | ★★ Good |
+
+Even without Ollama, the **embedding-based verification** (sentence-transformers cosine similarity) gives solid relevance scoring with no LLM required.
+
+---
+
+## Configuration
+
+Set environment variables to customize:
 
 ```bash
-cd help_pavel
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+OLLAMA_URL=http://localhost:11434   # Ollama server URL
+OLLAMA_MODEL=llama3                  # Model to use (llama3, mistral, phi3)
 ```
 
-### 3. Configure
+---
+
+## Changing the Ollama Model
 
 ```bash
-cp .env.example .env
-# Edit .env and paste your TELEGRAM_BOT_TOKEN
-```
+# Faster / smaller
+ollama pull phi3
+OLLAMA_MODEL=phi3 python backend.py
 
-### 4. Run the bot
+# More reasoning
+ollama pull llama3:70b
+OLLAMA_MODEL=llama3:70b python backend.py
 
-```bash
-python bot/main.py
+# Multilingual
+ollama pull aya
+OLLAMA_MODEL=aya python backend.py
 ```
 
 ---
 
-## Commands
+## Project Structure
 
-| Command | Description |
-|---|---|
-| `/start` | Welcome message |
-| `/help` | List all commands |
-| `/watch` | Toggle real-time monitoring on/off |
-| `/analyze` | Analyse last 10 stored messages |
-| `/analyze 20` | Analyse last 20 stored messages |
-| `/analyze <text>` | Analyse a specific text snippet |
-| `/report` | Show last 10 flagged messages (with receipts) |
-| `/report 20` | Show last 20 flagged messages |
-| `/cluster` | Show narrative cluster map |
+```
+disinfotracer-oss/
+├── backend.py      # FastAPI server, all pipeline logic
+├── index.html      # Single-file frontend (dark terminal UI)
+├── cache_oss.db    # SQLite cache (auto-created)
+└── README.md
+```
 
 ---
 
-## Classifier API integration
+## Extending
 
-Set `CLASSIFIER_API_URL` in `.env` to point at the teammates' model:
+### Add more search sources
+In `backend.py`, add a new function following the pattern of `wayback_search()` and call it in the `trace_claim()` endpoint.
 
-```
-CLASSIFIER_API_URL=http://their-server:8001
-```
+### Use a different embedding model
+Change `"all-MiniLM-L6-v2"` in `get_embedder()` to any HuggingFace sentence-transformer, e.g. `"all-mpnet-base-v2"` for higher accuracy.
 
-### Expected contract
-
-```
-POST /classify
-{ "text": "message content" }
-
-→ 200 OK
-{
-    "is_propaganda": true,
-    "confidence": 0.92,
-    "narrative_label": "Anti-NATO destabilisation",
-    "cluster_id": "cluster_42"     ← optional
-}
-```
-
-If the API URL is not set or unreachable, the bot automatically falls back to a **built-in mock classifier** (keyword heuristics) so the demo works standalone.
-
----
-
-## Adding the bot to a Telegram group
-
-1. Create a group or use an existing one
-2. Add the bot as a member: **Group Settings → Members → search your bot's username**
-3. Promote to **Admin** (so it can read messages)
-4. Send `/watch` in the group to start monitoring
-
-No cloud hosting needed — polling mode works with the bot running locally.
+### Add date-range binary search
+The Wayback CDX API supports `from` and `to` params — implement a binary search to pinpoint the earliest date a claim appeared within a narrowing date window.

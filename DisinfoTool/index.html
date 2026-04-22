@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>DisInfoTracer OSS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne+Mono&family=Syne:wght@400;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#080b10;--bg2:#0d1117;--bg3:#131820;--bg4:#1a2030;
+  --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.11);
+  --text:#dde3ed;--muted:#4e5a6a;--muted2:#7a8899;
+  --accent:#e63946;--accent2:#ff6b35;--green:#2ec27e;
+  --yellow:#f7c948;--blue:#58a6ff;--purple:#c084fc;
+  --mono:'Syne Mono',monospace;--sans:'DM Sans',sans-serif;--display:'Syne',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.65;min-height:100vh;overflow-x:hidden;}
+
+/* Grid noise overlay */
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;opacity:.4;
+  background-image:url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='0' y='0' width='1' height='1' fill='rgba(255,255,255,0.015)'/%3E%3C/svg%3E");
+}
+
+/* TOP BAR */
+.topbar{
+  display:flex;align-items:center;gap:14px;padding:14px 32px;
+  border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;
+  background:rgba(8,11,16,0.92);backdrop-filter:blur(12px);
+}
+.logo{font-family:var(--display);font-weight:800;font-size:19px;letter-spacing:-.5px;}
+.logo em{color:var(--accent);font-style:normal;}
+.logo-ver{font-family:var(--mono);font-size:10px;color:var(--muted);background:var(--bg3);border:1px solid var(--border);padding:2px 7px;border-radius:2px;}
+.oss-badge{font-family:var(--mono);font-size:10px;color:var(--green);background:rgba(46,194,126,0.08);border:1px solid rgba(46,194,126,0.2);padding:2px 8px;border-radius:2px;}
+.spacer{flex:1;}
+.llm-pill{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;padding:4px 12px;border-radius:20px;border:1px solid var(--border2);color:var(--muted2);}
+.llm-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+.llm-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green);}
+.llm-dot.warn{background:var(--yellow);box-shadow:0 0 6px var(--yellow);}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:400px 1fr;min-height:calc(100vh - 53px);}
+.left{border-right:1px solid var(--border);padding:28px;display:flex;flex-direction:column;gap:22px;}
+.right{padding:28px;overflow-y:auto;display:flex;flex-direction:column;}
+
+/* SECTION LABEL */
+.slabel{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-bottom:9px;display:flex;align-items:center;gap:8px;}
+.slabel::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* TEXTAREA */
+textarea{
+  width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:5px;
+  color:var(--text);font-family:var(--sans);font-size:13px;padding:12px 14px;
+  resize:none;outline:none;line-height:1.65;transition:border .18s;
+}
+textarea:focus{border-color:var(--accent);}
+textarea::placeholder{color:var(--muted);}
+
+/* TRACE BUTTON */
+.trace-btn{
+  width:100%;background:linear-gradient(135deg,var(--accent),#c0392b);
+  border:none;border-radius:5px;color:#fff;font-family:var(--display);
+  font-size:14px;font-weight:700;padding:13px;cursor:pointer;
+  transition:all .15s;letter-spacing:.8px;position:relative;overflow:hidden;
+}
+.trace-btn:hover{filter:brightness(1.1);transform:translateY(-1px);}
+.trace-btn:active{transform:translateY(0);}
+.trace-btn:disabled{background:var(--bg3);color:var(--muted);cursor:not-allowed;transform:none;filter:none;}
+.trace-btn::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent);
+  transform:translateX(-100%);transition:transform .6s;
+}
+.trace-btn:hover::before{transform:translateX(100%);}
+
+/* LOG */
+.log-box{
+  background:var(--bg2);border:1px solid var(--border);border-radius:5px;
+  padding:12px 14px;font-family:var(--mono);font-size:11px;height:148px;
+  overflow-y:auto;display:flex;flex-direction:column;gap:3px;
+}
+.ll{line-height:1.5;}
+.ll.ok{color:var(--green);}
+.ll.info{color:var(--blue);}
+.ll.warn{color:var(--yellow);}
+.ll.err{color:var(--accent);}
+.ll.dim{color:var(--muted);}
+.ll.purple{color:var(--purple);}
+
+/* MODE BADGE */
+.mode-box{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:12px 14px;}
+.mode-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.mode-icon{font-size:16px;}
+.mode-title{font-family:var(--mono);font-size:11px;font-weight:500;}
+.mode-desc{font-size:12px;color:var(--muted2);line-height:1.5;}
+.tech-pills{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
+.tpill{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:2px;background:var(--bg4);border:1px solid var(--border2);color:var(--muted2);}
+
+/* EXAMPLES */
+.examples{display:flex;flex-direction:column;gap:5px;}
+.ex{
+  background:var(--bg2);border:1px solid var(--border);border-radius:4px;
+  padding:8px 11px;font-size:12px;cursor:pointer;color:var(--muted2);
+  transition:all .13s;text-align:left;line-height:1.5;
+}
+.ex:hover{border-color:var(--border2);color:var(--text);}
+
+/* EMPTY STATE */
+.empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:14px;color:var(--muted);
+}
+.empty-ring{
+  width:64px;height:64px;border-radius:50%;border:2px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;font-size:24px;color:var(--muted);
+}
+.empty h2{font-family:var(--display);font-size:18px;font-weight:700;color:var(--muted);}
+.empty p{font-size:13px;text-align:center;max-width:260px;color:var(--muted);}
+
+/* LOADING */
+.loading{flex:1;display:none;flex-direction:column;align-items:center;justify-content:center;gap:18px;}
+.loading.on{display:flex;}
+.loader{
+  width:42px;height:42px;border:2px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin 0.9s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+.load-text{font-family:var(--mono);font-size:12px;color:var(--muted2);}
+.load-step{font-family:var(--mono);font-size:11px;color:var(--accent);text-align:center;max-width:300px;}
+
+/* RESULTS */
+.results{display:none;flex-direction:column;gap:26px;}
+.results.on{display:flex;}
+
+/* ORIGIN CARD */
+.origin-card{background:var(--bg2);border:1px solid var(--border2);border-radius:7px;padding:18px;}
+.origin-top{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px;}
+.origin-badge{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:3px;white-space:nowrap;flex-shrink:0;margin-top:2px;}
+.b-satire{background:rgba(247,201,72,.1);color:var(--yellow);border:1px solid rgba(247,201,72,.22);}
+.b-manuf{background:rgba(230,57,70,.1);color:var(--accent);border:1px solid rgba(230,57,70,.22);}
+.b-dist{background:rgba(255,107,53,.1);color:var(--accent2);border:1px solid rgba(255,107,53,.22);}
+.b-misc{background:rgba(88,166,255,.1);color:var(--blue);border:1px solid rgba(88,166,255,.22);}
+.b-unclear{background:rgba(78,90,106,.1);color:var(--muted2);border:1px solid var(--border);}
+.origin-type{font-family:var(--mono);font-size:11px;color:var(--muted2);letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;}
+.origin-text{font-size:14px;line-height:1.7;}
+.origin-mutation{font-size:13px;color:var(--muted2);font-style:italic;margin-top:8px;line-height:1.6;}
+.origin-foot{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center;}
+.conf{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:3px;}
+.conf-high{background:rgba(46,194,126,.1);color:var(--green);}
+.conf-med{background:rgba(247,201,72,.1);color:var(--yellow);}
+.conf-low{background:rgba(230,57,70,.1);color:var(--accent);}
+.origin-date-label{font-family:var(--mono);font-size:10px;color:var(--muted);padding:3px 0;}
+.origin-date-val{color:var(--accent2);}
+
+/* EARLIEST */
+.earliest-box{background:var(--bg);border:1px solid var(--accent);border-radius:7px;padding:16px;position:relative;}
+.earliest-box::before{
+  content:'EARLIEST';position:absolute;top:-9px;left:12px;
+  font-family:var(--mono);font-size:9px;color:var(--accent);
+  background:var(--bg);padding:0 6px;letter-spacing:2px;
+}
+.e-url{font-family:var(--mono);font-size:11px;color:var(--blue);word-break:break-all;margin-bottom:5px;}
+.e-url a{color:inherit;text-decoration:none;}
+.e-url a:hover{text-decoration:underline;}
+.e-date{font-family:var(--mono);font-size:12px;color:var(--accent2);margin-bottom:10px;}
+.e-snippet{font-size:12px;color:var(--muted2);line-height:1.6;border-left:2px solid var(--border2);padding-left:11px;font-style:italic;}
+
+/* QUERIES */
+.qrow{display:flex;flex-wrap:wrap;gap:6px;}
+.qchip{font-family:var(--mono);font-size:10px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:3px 9px;color:var(--muted2);}
+
+/* MUTATION CHAIN */
+.chain{display:flex;flex-direction:column;}
+.chain-step{display:grid;grid-template-columns:28px 1fr;gap:0 12px;}
+.step-col{display:flex;flex-direction:column;align-items:center;}
+.step-dot{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;flex-shrink:0;margin-top:8px;border:1px solid;}
+.step-vline{width:1px;flex:1;background:var(--border);margin:3px 0;}
+.step-body{padding:6px 0 18px;}
+.step-meta{display:flex;gap:7px;align-items:center;margin-bottom:5px;flex-wrap:wrap;}
+.step-dt{font-family:var(--mono);font-size:10px;color:var(--muted2);}
+.stype{font-family:var(--mono);font-size:9px;padding:2px 6px;border-radius:2px;}
+.st-orig{background:rgba(46,194,126,.1);color:var(--green);}
+.st-res{background:rgba(88,166,255,.1);color:var(--blue);}
+.st-mut{background:rgba(255,107,53,.1);color:var(--accent2);}
+.st-deb{background:rgba(78,90,106,.1);color:var(--muted2);}
+.step-url{font-family:var(--mono);font-size:10px;color:var(--blue);word-break:break-all;margin-bottom:4px;}
+.step-url a{color:inherit;text-decoration:none;}
+.step-url a:hover{text-decoration:underline;}
+.step-ver{font-size:12px;color:var(--text);font-style:italic;line-height:1.55;}
+.step-chg{font-family:var(--mono);font-size:10px;color:var(--accent2);margin-top:3px;}
+
+/* TIMELINE */
+.tl-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:16px;}
+.tl-scroll{overflow-x:auto;padding-bottom:4px;}
+.tl-bar{display:flex;align-items:flex-end;gap:3px;min-width:360px;height:72px;}
+.tl-item{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;cursor:pointer;min-width:20px;}
+.tl-fill{width:100%;border-radius:2px 2px 0 0;min-height:4px;transition:opacity .15s;}
+.tl-item:hover .tl-fill{opacity:.65;}
+.tl-lbl{font-family:var(--mono);font-size:8px;color:var(--muted);writing-mode:vertical-lr;transform:rotate(180deg);white-space:nowrap;max-height:48px;overflow:hidden;}
+.tl-legend{display:flex;gap:14px;margin-top:11px;flex-wrap:wrap;}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted2);}
+.legdot{width:8px;height:8px;border-radius:2px;}
+
+/* HITS TABLE */
+.hits-wrap{overflow-x:auto;}
+.htable{width:100%;border-collapse:collapse;font-size:12px;}
+.htable th{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1.5px;text-align:left;padding:5px 10px;border-bottom:1px solid var(--border);}
+.htable td{padding:7px 10px;border-bottom:1px solid var(--border);vertical-align:top;}
+.htable tr:hover td{background:var(--bg3);}
+.rel-bar{height:3px;border-radius:2px;background:var(--accent);}
+.h-url{font-family:var(--mono);font-size:10px;color:var(--blue);}
+.h-url a{color:inherit;text-decoration:none;}
+.h-url a:hover{text-decoration:underline;}
+.h-date{font-family:var(--mono);font-size:10px;color:var(--muted2);white-space:nowrap;}
+.h-src{font-family:var(--mono);font-size:9px;color:var(--muted);background:var(--bg4);border:1px solid var(--border);padding:1px 5px;border-radius:2px;}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:3px;height:3px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+
+@media(max-width:860px){
+  .layout{grid-template-columns:1fr;}
+  .left{border-right:none;border-bottom:1px solid var(--border);}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">Dis<em>Info</em>Tracer</div>
+  <div class="logo-ver">OSS v1.0</div>
+  <div class="oss-badge">100% open-source</div>
+  <div class="spacer"></div>
+  <div class="llm-pill" id="llmPill">
+    <div class="llm-dot" id="llmDot"></div>
+    <span id="llmLabel">checking...</span>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ─── LEFT ─────────────────────────────── -->
+  <div class="left">
+
+    <div>
+      <div class="slabel">Suspected claim</div>
+      <textarea id="claim" rows="5" placeholder="Paste suspected disinformation here…&#10;&#10;Press Ctrl+Enter to trace."></textarea>
+    </div>
+
+    <button class="trace-btn" id="traceBtn" onclick="startTrace()">⟶ TRACE TO ORIGIN</button>
+
+    <!-- Mode info -->
+    <div class="mode-box" id="modeBox">
+      <div class="mode-row">
+        <span class="mode-icon" id="modeIcon">⚙</span>
+        <span class="mode-title" id="modeTitle">Detecting mode…</span>
+      </div>
+      <div class="mode-desc" id="modeDesc">Checking local LLM availability…</div>
+      <div class="tech-pills" id="modePills"></div>
+    </div>
+
+    <div>
+      <div class="slabel">Activity log</div>
+      <div class="log-box" id="logBox">
+        <div class="ll dim">// system ready. no api keys required.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="slabel">Example claims</div>
+      <div class="examples">
+        <button class="ex" onclick="setEx(this)">5G towers cause COVID-19 by weakening the immune system</button>
+        <button class="ex" onclick="setEx(this)">Bill Gates is hiding microchips in COVID vaccines</button>
+        <button class="ex" onclick="setEx(this)">Drinking bleach or disinfectant cures coronavirus</button>
+        <button class="ex" onclick="setEx(this)">NASA has been fabricating climate data since 1990</button>
+        <button class="ex" onclick="setEx(this)">Chemtrails are being used to poison the population</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── RIGHT ────────────────────────────── -->
+  <div class="right" id="rightPanel">
+
+    <div class="empty" id="emptyState">
+      <div class="empty-ring">◎</div>
+      <h2>No active trace</h2>
+      <p>Enter a suspected disinformation claim and hit <em>Trace</em>. No API keys required.</p>
+    </div>
+
+    <div class="loading" id="loadingState">
+      <div class="loader"></div>
+      <div class="load-text">Tracing origin…</div>
+      <div class="load-step" id="loadStep">Initializing pipeline</div>
+    </div>
+
+    <div class="results" id="results">
+
+      <div>
+        <div class="slabel">Origin analysis</div>
+        <div class="origin-card">
+          <div class="origin-top">
+            <div style="flex:1">
+              <div class="origin-type" id="oType">—</div>
+              <div class="origin-text" id="oNarrative">—</div>
+              <div class="origin-mutation" id="oMutation"></div>
+            </div>
+            <div class="origin-badge" id="oBadge">—</div>
+          </div>
+          <div class="origin-foot">
+            <div class="conf" id="oConf">—</div>
+            <div class="origin-date-label">estimated origin: <span class="origin-date-val" id="oDate">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="slabel">Queries generated</div>
+        <div class="qrow" id="qRow"></div>
+      </div>
+
+      <div id="sec-earliest" style="display:none">
+        <div class="slabel">Earliest found source</div>
+        <div class="earliest-box">
+          <div class="e-url" id="eUrl"></div>
+          <div class="e-date" id="eDate"></div>
+          <div class="e-snippet" id="eSnip"></div>
+        </div>
+      </div>
+
+      <div id="sec-chain" style="display:none">
+        <div class="slabel">Mutation chain</div>
+        <div class="chain" id="chainEl"></div>
+      </div>
+
+      <div id="sec-timeline" style="display:none">
+        <div class="slabel">Hit timeline</div>
+        <div class="tl-wrap">
+          <div class="tl-scroll"><div class="tl-bar" id="tlBar"></div></div>
+          <div class="tl-legend">
+            <div class="leg"><div class="legdot" style="background:var(--green)"></div>Original</div>
+            <div class="leg"><div class="legdot" style="background:var(--accent2)"></div>Mutation</div>
+            <div class="leg"><div class="legdot" style="background:var(--blue)"></div>Reshare</div>
+            <div class="leg"><div class="legdot" style="background:var(--muted)"></div>Debunking</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="sec-hits" style="display:none">
+        <div class="slabel">All sources</div>
+        <div class="hits-wrap">
+          <table class="htable">
+            <thead><tr>
+              <th>Date</th><th>URL</th><th>Type</th><th>Relevance</th><th>Credibility</th><th>Origin</th>
+            </tr></thead>
+            <tbody id="hBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Status check ─────────────────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const r = await fetch('/status');
+    const d = await r.json();
+    const dot = document.getElementById('llmDot');
+    const lbl = document.getElementById('llmLabel');
+    const modeTitle = document.getElementById('modeTitle');
+    const modeDesc = document.getElementById('modeDesc');
+    const modeIcon = document.getElementById('modeIcon');
+    const pills = document.getElementById('modePills');
+
+    if (d.ollama) {
+      dot.className = 'llm-dot ok';
+      lbl.textContent = `Ollama · ${d.ollama_model}`;
+      modeIcon.textContent = '🦙';
+      modeTitle.textContent = 'Ollama LLM mode';
+      modeDesc.textContent = `Using local ${d.ollama_model} for decomposition, verification, and origin analysis. All processing on-device.`;
+    } else {
+      dot.className = 'llm-dot warn';
+      lbl.textContent = 'Embeddings + Rules';
+      modeIcon.textContent = '🧮';
+      modeTitle.textContent = 'Embeddings + rules mode';
+      modeDesc.textContent = 'Ollama not detected. Using sentence-transformers (all-MiniLM-L6-v2) for semantic similarity + rule-based origin analysis. Install Ollama for richer LLM reasoning.';
+    }
+
+    const techStack = ['sentence-transformers', 'Wayback CDX', 'DuckDuckGo', 'Common Crawl', 'Bing News RSS', 'trafilatura'];
+    pills.innerHTML = techStack.map(t => `<div class="tpill">${t}</div>`).join('');
+  } catch(e) {
+    document.getElementById('llmLabel').textContent = 'server offline';
+  }
+}
+checkStatus();
+setInterval(checkStatus, 15000);
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function log(msg, type='info') {
+  const box = document.getElementById('logBox');
+  const el = document.createElement('div');
+  el.className = `ll ${type}`;
+  const ts = new Date().toLocaleTimeString('en',{hour12:false});
+  el.textContent = `[${ts}] ${msg}`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setEx(btn) { document.getElementById('claim').value = btn.textContent.trim(); }
+
+const ORIGIN_LABELS = {
+  satire_taken_literally:'SATIRE → LITERAL',
+  manufactured:'MANUFACTURED',
+  legitimate_distorted:'LEGITIMATE → DISTORTED',
+  true_but_miscontextualized:'MISCONTEXTUALIZED',
+  unclear:'UNCLEAR ORIGIN'
+};
+const ORIGIN_BADGE_CLS = {
+  satire_taken_literally:'b-satire',
+  manufactured:'b-manuf',
+  legitimate_distorted:'b-dist',
+  true_but_miscontextualized:'b-misc',
+  unclear:'b-unclear'
+};
+const STYPE_CLS = {
+  original_source:'st-orig',
+  reshare:'st-res',
+  mutation:'st-mut',
+  debunking:'st-deb'
+};
+const BAR_COLOR = {
+  original_source:'var(--green)',
+  reshare:'var(--blue)',
+  mutation:'var(--accent2)',
+  debunking:'var(--muted)',
+  unrelated:'var(--bg4)'
+};
+const DOT_COLOR = {
+  original_source:'var(--green)',
+  reshare:'var(--blue)',
+  mutation:'var(--accent2)',
+  debunking:'var(--muted)',
+  unrelated:'var(--muted)'
+};
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function renderResults(data) {
+  const o = data.origin_analysis || {};
+
+  // Origin
+  document.getElementById('oType').textContent = ORIGIN_LABELS[o.origin_type] || o.origin_type || '—';
+  document.getElementById('oNarrative').textContent = o.narrative || '—';
+  document.getElementById('oMutation').textContent = o.mutation_summary || '';
+  document.getElementById('oDate').textContent = o.origin_date || '—';
+  const badge = document.getElementById('oBadge');
+  badge.className = `origin-badge ${ORIGIN_BADGE_CLS[o.origin_type] || 'b-unclear'}`;
+  badge.textContent = ORIGIN_LABELS[o.origin_type] || o.origin_type || '—';
+  const conf = document.getElementById('oConf');
+  conf.className = `conf conf-${o.confidence || 'low'}`;
+  conf.textContent = `confidence: ${o.confidence || 'low'}`;
+
+  // Queries
+  const qr = document.getElementById('qRow');
+  qr.innerHTML = (data.queries||[]).map(q=>`<div class="qchip">"${q}"</div>`).join('');
+
+  // LLM mode note
+  if (data.llm_mode) log(`LLM mode: ${data.llm_mode}`, 'purple');
+
+  // Earliest
+  if (data.earliest) {
+    document.getElementById('sec-earliest').style.display='block';
+    const e = data.earliest;
+    document.getElementById('eUrl').innerHTML = `<a href="${e.url}" target="_blank">${e.url}</a>`;
+    document.getElementById('eDate').textContent = e.date || 'date unknown';
+    document.getElementById('eSnip').textContent = e.snippet || '(no text extracted)';
+  }
+
+  // Mutation chain
+  const chain = data.mutation_chain || [];
+  if (chain.length) {
+    document.getElementById('sec-chain').style.display='block';
+    const chainEl = document.getElementById('chainEl');
+    chainEl.innerHTML = chain.map((s,i) => {
+      const isLast = i === chain.length-1;
+      const dc = DOT_COLOR[s.source_type] || 'var(--muted)';
+      return `<div class="chain-step">
+        <div class="step-col">
+          <div class="step-dot" style="background:${dc}18;border-color:${dc}44;color:${dc}">${s.step}</div>
+          ${!isLast ? '<div class="step-vline"></div>' : ''}
+        </div>
+        <div class="step-body">
+          <div class="step-meta">
+            <span class="step-dt">${s.date}</span>
+            <span class="stype ${STYPE_CLS[s.source_type]||''}">${(s.source_type||'—').replace(/_/g,' ')}</span>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">${s.credibility||''}</span>
+          </div>
+          <div class="step-url"><a href="${s.url}" target="_blank">${s.url.length>75?s.url.slice(0,75)+'…':s.url}</a></div>
+          ${s.version ? `<div class="step-ver">"${s.version}"</div>` : ''}
+          ${s.changed_from_prev ? `<div class="step-chg">⚡ wording shifted from previous source</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Timeline bar
+  const tl = data.timeline || [];
+  if (tl.length) {
+    document.getElementById('sec-timeline').style.display='block';
+    const bar = document.getElementById('tlBar');
+    bar.innerHTML = '';
+    const maxR = Math.max(...tl.map(t=>t.relevance||0), 1);
+    tl.forEach(t => {
+      const h = Math.max(5, Math.round((t.relevance/maxR)*60));
+      const item = document.createElement('div');
+      item.className='tl-item';
+      item.title=`${t.date} — ${(t.source_type||'').replace(/_/g,' ')}`;
+      item.innerHTML=`<div class="tl-fill" style="height:${h}px;background:${BAR_COLOR[t.source_type]||'var(--muted)'}"></div><div class="tl-lbl">${t.date}</div>`;
+      item.onclick=()=>window.open(t.url,'_blank');
+      bar.appendChild(item);
+    });
+  }
+
+  // Hits table
+  if (tl.length) {
+    document.getElementById('sec-hits').style.display='block';
+    const tbody = document.getElementById('hBody');
+    tbody.innerHTML = tl.map(h=>`
+      <tr>
+        <td class="h-date">${h.date}</td>
+        <td class="h-url"><a href="${h.url}" target="_blank">${h.url.length>55?h.url.slice(0,55)+'…':h.url}</a></td>
+        <td><span class="stype ${STYPE_CLS[h.source_type]||''}">${(h.source_type||'—').replace(/_/g,' ')}</span></td>
+        <td><div class="rel-bar" style="width:${Math.round((h.relevance/10)*72)}px"></div></td>
+        <td style="font-family:var(--mono);font-size:9px;color:var(--muted2)">${h.credibility||'—'}</td>
+        <td><span class="h-src">${h.source||'—'}</span></td>
+      </tr>`).join('');
+  }
+}
+
+// ─── Load messages ────────────────────────────────────────────────────────────
+const LOAD_MSGS = [
+  'Decomposing claim into search vectors…',
+  'Querying Wayback Machine CDX…',
+  'Searching Common Crawl index…',
+  'Running DuckDuckGo instant API…',
+  'Fetching Bing News RSS…',
+  'Scraping candidate pages with trafilatura…',
+  'Computing semantic similarity via all-MiniLM…',
+  'Clustering hits by embedding distance…',
+  'Running origin classification…',
+  'Building mutation chain…'
+];
+
+async function startTrace() {
+  const claim = document.getElementById('claim').value.trim();
+  if (!claim) { log('No claim entered.','warn'); return; }
+
+  document.getElementById('traceBtn').disabled = true;
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('results').classList.remove('on');
+  document.getElementById('loadingState').classList.add('on');
+
+  // Reset result sections
+  ['sec-earliest','sec-chain','sec-timeline','sec-hits'].forEach(id=>{
+    document.getElementById(id).style.display='none';
+  });
+  document.getElementById('logBox').innerHTML='';
+  log('Starting trace pipeline…','ok');
+  log(`Claim: "${claim.slice(0,60)}${claim.length>60?'…':''}"`, 'dim');
+
+  let mi = 0;
+  const intv = setInterval(()=>{
+    mi = (mi+1)%LOAD_MSGS.length;
+    document.getElementById('loadStep').textContent = LOAD_MSGS[mi];
+    log(LOAD_MSGS[mi], mi%3===0?'ok':mi%3===1?'info':'purple');
+  }, 3800);
+
+  try {
+    const res = await fetch('/trace', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({claim})
+    });
+    clearInterval(intv);
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Server error');
+    }
+
+    const data = await res.json();
+    log(`Trace complete — ${data.hits?.length||0} sources verified.`, 'ok');
+    log(`Origin: ${data.origin_analysis?.origin_type||'unclear'} (${data.origin_analysis?.confidence||'low'} confidence)`, 'ok');
+    if (data.earliest) log(`Earliest: ${data.earliest.date} — ${data.earliest.url.slice(0,50)}…`, 'ok');
+
+    document.getElementById('loadingState').classList.remove('on');
+    document.getElementById('results').classList.add('on');
+    renderResults(data);
+
+  } catch(e) {
+    clearInterval(intv);
+    log(`Error: ${e.message}`, 'err');
+    document.getElementById('loadingState').classList.remove('on');
+    document.getElementById('emptyState').style.display='flex';
+    document.getElementById('emptyState').innerHTML=`
+      <div class="empty-ring" style="border-color:var(--accent)">✕</div>
+      <h2 style="color:var(--accent)">Trace failed</h2>
+      <p style="color:var(--accent)">${e.message}</p>
+      <p style="color:var(--muted);margin-top:4px">Is the backend running? <code>python backend.py</code></p>`;
+  } finally {
+    document.getElementById('traceBtn').disabled = false;
+  }
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('claim').addEventListener('keydown', e=>{
+    if (e.key==='Enter' && e.ctrlKey) startTrace();
+  });
+});
+</script>
+</body>
+</html>
